@@ -1,0 +1,6 @@
+langgraph>=1.0.0,<2.0.0
+pychain-core>=0.1.0
+pychain-openai>=0.1.0
+openai>=2.0.0,<3.0.0
+pydantic>=2.0.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
