@@ -1,0 +1,14 @@
+# Core
+langgraph>=0.4.0
+langchain-openai>=0.3.0
+
+# Jev (TypeSafe System One) — typed, calibrated decisions
+typesafe-sdk>=0.7.0
+
+# Provider data
+googlemaps>=4.10.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.12.0
+httpx>=0.28.0
