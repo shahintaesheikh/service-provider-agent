@@ -115,6 +115,18 @@ SUBCATEGORY_SURFACE_FORMS = {
 }
 
 
+def _missing_entities(entity: Optional[dict]) -> list[str]:
+    """Return required entity fields that are None/empty. Pure deterministic check."""
+    if not entity:
+        return ["problem_description", "address", "city"]
+    missing = []
+    if not entity.get("problem_description"):
+        missing.append("problem_description")
+    if not entity.get("address") and not entity.get("city"):
+        missing.append("address")
+    return missing
+
+
 def _sparse_caller(turns: list[dict]) -> Optional[Tuple[int, int]]:
     """Fires when the caller's first utterance is short (<=6 words) AND
     their total speech across all turns is short (<=35 words). Sparse calls
@@ -143,18 +155,25 @@ def _build_question(*, sparse=None, generic=None) -> str:
     )
 
 
-def decide_clarification(turns: list[dict]) -> ClarificationDecision:
-    """Aggregate heuristics into a single verdict + audit trail."""
+def decide_clarification(turns: list[dict], entity: Optional[dict] = None) -> ClarificationDecision:
+    """Aggregate deterministic heuristics into a single verdict + audit trail.
+    
+    Uses ONLY deterministic checks: sparse caller + missing entity fields.
+    No LLM judgment involved.
+    """
     reasons: list[str] = []
 
     sparse = _sparse_caller(turns)
+    missing = _missing_entities(entity)
 
     if sparse:
         reasons.append(f"sparse_caller:first{sparse[0]}_total{sparse[1]}")
+    if missing:
+        reasons.append(f"missing_fields:{','.join(missing)}")
 
     needs = bool(reasons)
     question = (
-        _build_question(sparse=sparse) if needs else None
+        _build_question(sparse=sparse, missing=missing) if needs else None
     )
 
     return ClarificationDecision(
@@ -179,8 +198,10 @@ def clarification_gate(state: WorkflowState):
     needs_followup conditional skips the gather loop, so the appended question
     is a no-op there.
     """
+    entity = state.get("entity")
     decision = decide_clarification(
         state.get("turns_split") or [],
+        entity=entity,
     )
 
     existing_follow_ups = list(state.get("follow_ups") or [])
