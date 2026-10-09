@@ -153,8 +153,27 @@ def _sparse_caller(turns: list[dict]) -> Optional[Tuple[int, int]]:
     return None
 
 
-def _build_question(*, sparse=None, generic=None) -> str:
+def _missing_entities(entity: Optional[dict]) -> list[str]:
+    """Return required entity fields that are None/empty. Pure deterministic check."""
+    if not entity:
+        return ["problem_description", "address"]
+    missing = []
+    if not entity.get("problem_description"):
+        missing.append("problem_description")
+    if not entity.get("address") and not entity.get("city"):
+        missing.append("address")
+    return missing
+
+
+def _build_question(*, sparse=None, missing=None) -> str:
     """Pick a clarifying question based on which heuristic(s) fired."""
+    if missing:
+        if "problem_description" in missing and "address" in missing:
+            return "Could you describe the problem and where in Santa Barbara it's located?"
+        elif "problem_description" in missing:
+            return "What exactly is happening at your home?"
+        elif "address" in missing:
+            return "Where in Santa Barbara is this located?"
     if sparse:
         return (
             "Could you tell me a bit more about what's going wrong — for example, "
@@ -167,11 +186,15 @@ def _build_question(*, sparse=None, generic=None) -> str:
 
 
 def decide_clarification(turns: list[dict], entity: Optional[dict] = None) -> ClarificationDecision:
+<<<<<<< HEAD
+    """Aggregate heuristics into a single verdict + audit trail."""
+=======
     """Aggregate deterministic heuristics into a single verdict + audit trail.
     
     Uses ONLY deterministic checks: sparse caller + missing entity fields.
     No LLM judgment involved.
     """
+>>>>>>> origin/main
     reasons: list[str] = []
 
     sparse = _sparse_caller(turns)
@@ -213,6 +236,9 @@ def clarification_gate(state: WorkflowState):
     is a no-op there.
     """
 <<<<<<< HEAD
+    entity = state.get("entity")
+=======
+<<<<<<< HEAD
     # Rebuild turns_split from current transcript so multi-turn updates
     # from gather_followup are visible to the sparse-caller heuristic.
     transcript = state.get("transcript", "")
@@ -233,6 +259,7 @@ def clarification_gate(state: WorkflowState):
 
 =======
     entity = state.get("entity")
+>>>>>>> origin/main
 >>>>>>> origin/main
     decision = decide_clarification(
         state.get("turns_split") or [],
