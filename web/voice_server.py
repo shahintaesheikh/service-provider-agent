@@ -189,16 +189,21 @@ def _build_clarification_response(question: str, profile: dict | None) -> dict:
 
 
 def _format_provider(provider: dict) -> dict:
-    """Normalize a provider dict to the shape the frontend expects."""
+    """Normalize a provider dict to the shape the frontend expects.
+
+    Google Places API (New) returns displayName as a ``{text, languageCode}``
+    dict, but ``make_call_google_places()`` already unwraps it to a plain
+    ``name`` string during normalization.  We still prefer ``name`` first,
+    then ``displayName``, then a fallback dash.
+    """
     return {
-        "name": provider.get("name") or provider.get("display_name", "—"),
-        "phone": provider.get("phone") or provider.get("formatted_phone_number", "—"),
-        "address": provider.get("address") or provider.get("formatted_address", "—"),
+        "name": provider.get("name") or provider.get("displayName", "—"),
+        "phone": provider.get("phone") or provider.get("nationalPhoneNumber", "—"),
+        "address": provider.get("address") or provider.get("formattedAddress", "—"),
         "rating": provider.get("rating"),
         "open_now": provider.get("open_now"),
-        "display_name": provider.get("display_name"),
-        "formatted_phone_number": provider.get("formatted_phone_number"),
-        "formatted_address": provider.get("formatted_address"),
+        "displayName": provider.get("displayName"),
+        "formattedAddress": provider.get("formattedAddress"),
     }
 
 
@@ -342,6 +347,9 @@ def classify_voice(turns: list[dict], caller_phone: str | None) -> dict:
     else:
         lead_quality_label = None
 
+    # Check if the search radius was expanded (empty results → wider retry)
+    search_expanded = result.get("search_expanded", False)
+
     return {
         "category": category,
         "subcategory": subcategory,
@@ -359,6 +367,7 @@ def classify_voice(turns: list[dict], caller_phone: str | None) -> dict:
         "city": result.get("city") or classification.get("city"),
         "provider_matches": formatted_matches,
         "merged_providers": formatted_merged,
+        "search_expanded": search_expanded,
         "lead_quality": lead_quality_label,
         "trainer_log": result.get("trainer_log"),
         "caller_profile": profile,

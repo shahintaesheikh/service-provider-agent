@@ -98,7 +98,7 @@ function showResult(pred) {
     pd.style.cssText = "font-size:12px;line-height:1.5";
     pd.appendChild(document.createTextNode(p.name || "—"));
     if (p.phone) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(p.phone)); }
-    if (p.address || p.formatted_address) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(p.address || p.formatted_address)); }
+    if (p.address || p.formattedAddress) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(p.address || p.formattedAddress)); }
     if (p.rating != null) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(`\u2605 ${p.rating} `)); }
     if (p.open_now != null) { pd.appendChild(document.createTextNode(p.open_now ? "\u2022 Open" : "\u2022 Closed")); }
     appendDtDd(els.resultBody, "Provider", pd);
@@ -112,18 +112,6 @@ function showResult(pred) {
   appendDtDd(els.resultBody, "Needs human review", pred.needs_human_review ? "yes" : "no");
   appendDtDd(els.resultBody, "Needs clarification", pred.needs_clarification ? "yes" : "no");
   els.summary.textContent = pred.call_summary || "";
-
-  // Push top provider recommendation to chat transcript
-  const recProviders = pred.merged_providers || pred.provider_matches || [];
-  if (recProviders.length > 0) {
-    const top = recProviders[0];
-    const name = (top.displayName && top.displayName.text) || top.name || top.display_name || "a local provider";
-    const phone = top.nationalPhoneNumber || top.phone || "";
-    const category = pred.category || "";
-    let msg = `I recommend ${name} — they're a great match for your ${category.toLowerCase()} issue.`;
-    if (phone) msg += ` You can reach them at ${phone}.`;
-    pushTurn("agent", msg);
-  }
 }
 
 function showCallerProfile(profile) {
@@ -181,6 +169,10 @@ async function classifyAndRespond() {
   showCallerProfile(pred.caller_profile);
   showResult(pred);
 
+  if (pred.search_expanded) {
+    pushTurn("agent", "I'm expanding the search to cover a wider area…");
+  }
+
   const needsMore = pred.needs_clarification && pred.clarification_question;
 
   if (needsMore) {
@@ -189,7 +181,12 @@ async function classifyAndRespond() {
     setBusy(false);
   } else {
     state.callClosed = true;
-    const dispatched = pred.needs_human_review
+    const providerName = pred.merged_providers && pred.merged_providers.length > 0
+      ? pred.merged_providers[0].name || pred.merged_providers[0].displayName || "a provider"
+      : "";
+    const dispatched = providerName
+      ? ` Matching with ${providerName}.`
+      : pred.needs_human_review
       ? " Routing this for human review."
       : "";
     const spoken = (pred.call_summary || "Got it.") + dispatched;
@@ -276,6 +273,3 @@ function tickTimer() {
   }
 }
 setInterval(tickTimer, 1000);
-
-// ── Initial agent greeting ───────────────────────────────────────────────────
-pushTurn("agent", "Hi, I'm your Home Service Agent. What's going on at your home?");
