@@ -170,8 +170,11 @@ def decide_clarification(turns: list[dict]) -> ClarificationDecision:
 def clarification_gate(state: WorkflowState):
     """Deterministic clarification-signal gate.
 
-    Runs the sparse-caller heuristic against the turns. Writes its verdict
-    to state.gate_clarification_verdict — does NOT touch
+    Rebuilds turns_split from the current transcript before running the
+    sparse-caller heuristic, so multi-turn updates from gather_followup()
+    are reflected in the decision (fixes infinite re-ask loop).
+
+    Writes its verdict to state.gate_clarification_verdict — does NOT touch
     state.needs_clarification, so downstream nodes can override.
 
     In interactive mode the question is also appended to state.follow_ups so
@@ -179,6 +182,24 @@ def clarification_gate(state: WorkflowState):
     needs_followup conditional skips the gather loop, so the appended question
     is a no-op there.
     """
+    # Rebuild turns_split from current transcript so multi-turn updates
+    # from gather_followup are visible to the sparse-caller heuristic.
+    transcript = state.get("transcript", "")
+    if transcript:
+        turns_split = []
+        for line in transcript.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("[CALLER]"):
+                turns_split.append({"speaker": "caller", "text": line[8:].strip()})
+            elif line.startswith("[AGENT]"):
+                turns_split.append({"speaker": "agent", "text": line[7:].strip()})
+            else:
+                # Plain text with no speaker prefix — treat as caller (initial input)
+                turns_split.append({"speaker": "caller", "text": line})
+        state["turns_split"] = turns_split
+
     decision = decide_clarification(
         state.get("turns_split") or [],
     )
