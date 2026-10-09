@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from .config import SUBCATEGORY_TO_CATEGORY, SUBCATEGORY_TO_VENDOR_TYPE
@@ -435,7 +436,10 @@ def create_graph(eval_mode: bool = True):
     workflow = StateGraph(WorkflowState)
 
     # Create all nodes
-    workflow.add_node("extract_and_check", timed_node("extract_and_check", make_extract_and_check()))
+    # LLM for entity extraction (GPT-6 Luna — smaller/faster model for structured extraction)
+    llm_extract = ChatOpenAI(model="gpt-6-luna", temperature=0, max_retries=3, request_timeout=20)
+
+    workflow.add_node("extract_and_check", timed_node("extract_and_check", make_extract_and_check(llm_extract)))
     workflow.add_node("clarification_gate", timed_node("clarification_gate", clarification_gate))
     workflow.add_node("gather_followup", timed_node("gather_followup", gather_followup))
     workflow.add_node("build_enriched_query", timed_node("build_enriched_query", build_enriched_query))
