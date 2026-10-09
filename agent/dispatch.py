@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from .config import CATEGORY_SUBCATEGORIES, SUBCATEGORY_TO_CATEGORY, DEFAULT_CITY
 from .state import WorkflowState
-from tools.provider_search import geocode_location, merge_and_rank_providers
+from tools.provider_search import geocode_location, merge_google_and_yelp
 
 
 def resolve_location(state: WorkflowState):
@@ -43,13 +43,14 @@ def resolve_location(state: WorkflowState):
 def merge_and_rank(state: WorkflowState):
     """Merge, deduplicate, and rank provider results.
 
-    Uses tools.provider_search.merge_and_rank_providers() to
-    deduplicate by place ID, sort by rating descending, and return
-    the top 5 candidates.
+    Merges Google Places and Yelp results (via phone-number dedup),
+    enriches with Yelp review data, and sorts by rating descending.
+    Yelp-only entries are included as secondary options.
     """
     provider_matches = state.get("provider_matches") or []
+    yelp_results = state.get("yelp_results") or []
 
-    merged = merge_and_rank_providers(provider_matches)
+    merged = merge_google_and_yelp(provider_matches, yelp_results)
 
     return {
         "merged_providers": merged,

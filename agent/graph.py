@@ -244,14 +244,34 @@ def make_call_google_places():
 
 
 def make_call_yelp():
-    """Yelp Fusion API call — stub.
+    """Yelp Fusion API call using tools.provider_search.
 
-    Yelp integration is not yet implemented in the tools module.
-    Passes through existing provider_matches unchanged.
+    Uses search_yelp_providers() with the subcategory's vendor type and
+    the resolved location.  Gracefully handles missing API key.
     """
     def call_yelp(state: WorkflowState):
+        from tools.provider_search import search_yelp_providers
+
+        classification = state.get("classification") or {}
+        subcategory = (classification.get("subcategory") or "").lower()
+        category = (classification.get("category") or "").lower()
+
+        # Determine the vendor/service type for the API query
+        vendor_type = SUBCATEGORY_TO_VENDOR_TYPE.get(subcategory, category)
+        if not vendor_type or vendor_type == "other":
+            vendor_type = "home_services"
+
+        city = state.get("city") or "Santa Barbara"
+        location_str = f"{city}, CA"
+
+        results = search_yelp_providers(
+            service_type=vendor_type,
+            location=location_str,
+            max_results=5,
+        )
+
         return {
-            "provider_matches": state.get("provider_matches") or [],
+            "yelp_results": results,
         }
 
     return call_yelp
