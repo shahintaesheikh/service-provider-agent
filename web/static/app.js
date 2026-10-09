@@ -117,7 +117,7 @@ function showResult(pred) {
   els.resultBody.replaceChildren();
   appendDtDd(els.resultBody, "Category", pred.category);
   appendDtDd(els.resultBody, "Subcategory", pred.subcategory);
-  appendDtDd(els.resultBody, "Urgency", urgencyPill(pred.urgency || pred.urgency_level));
+  appendDtDd(els.resultBody, "Urgency", urgencyPill(pred.urgency_level || pred.urgency));
   appendDtDd(els.resultBody, "Confidence", pred.confidence != null ? `${(pred.confidence * 100).toFixed(0)}%` : "—");
   // Provider match — show first matched provider details
   const providers = pred.merged_providers || pred.provider_matches || [];
@@ -469,7 +469,7 @@ async function startListening() {
 }
 
 els.micBtn.addEventListener("click", async () => {
-  if (state.callClosed) resetAll();
+  if (state.callClosed) await resetAll();
   if (state.listening) {
     await stopScribe();
   } else {
@@ -495,7 +495,7 @@ els.composer.addEventListener("submit", async (e) => {
   const text = els.textInput.value.trim();
   if (!text || state.busy) return;
 
-  if (state.callClosed) resetAll();
+  if (state.callClosed) await resetAll();
   if (state.listening) await stopScribe();
 
   if (state.turns.length === 0) pushTurn("agent", "Home Service Agent, what's going on?");
