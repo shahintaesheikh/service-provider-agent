@@ -9,6 +9,8 @@ Shared utilities used by multiple nodes.
 """
 from __future__ import annotations
 
+import logging
+import os
 import re
 import time
 
@@ -67,6 +69,38 @@ def _log_cache_usage(node_name: str, response) -> None:
             print(f"[cache] {node_name}: cached={cached}/{prompt} ({pct:.0f}%)")
     except Exception:  # noqa: BLE001 — telemetry never fails the call
         pass
+
+
+# ── Logging setup ────────────────────────────────────────────────────────────
+
+
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
+logger = logging.getLogger("spa")
+
+# Users can enable debug logging via:
+#   export SPA_LOG_LEVEL=DEBUG
+# or by setting LOG_LEVEL=DEBUG in .env
+if os.environ.get("SPA_LOG_LEVEL", "").upper() == "DEBUG":
+    logger.setLevel(logging.DEBUG)
+
+
+def log_node(node_name: str):
+    """Decorator that logs node start/end with elapsed time."""
+    def decorator(fn):
+        def wrapper(state):
+            logger.debug("[%s] started", node_name)
+            t0 = time.perf_counter()
+            try:
+                result = fn(state)
+                elapsed = time.perf_counter() - t0
+                logger.debug("[%s] done in %.3fs", node_name, elapsed)
+                return result
+            except Exception as e:
+                elapsed = time.perf_counter() - t0
+                logger.error("[%s] FAILED after %.3fs: %s", node_name, elapsed, e)
+                raise
+        return wrapper
+    return decorator
 
 
 # ── Per-node latency instrumentation ─────────────────────────────────────────
