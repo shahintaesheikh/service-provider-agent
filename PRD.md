@@ -122,7 +122,7 @@ The proven Validator → Override → Trainer pattern is carried forward **verba
 |------|----------|---------|
 | **Validator Gate** | Checks `needs_human_review`. If false → auto-routes. If true → pauses via `interrupt()` for a human reviewer. | Routing decision logged for audit trail. |
 | **Override Node** | Applies human corrections (category, subcategory, urgency) to the AI prediction before final logging. | Corrections recorded in trainer log. |
-| **Trainer Log** | Records full transcript + AI prediction (with provenance: original category, urgency dimensions, Jev confidence, HITL trigger reason) + human override (if any) + final decision. | Powers both conversion rate and lead quality metrics. |
+| **Trainer Log** | Records full transcript + AI prediction (with provenance: original category, urgency dimensions, Jev confidence, HITL trigger reason) + human override (if any) + final decision. | Powers both conversion rate and lead quality metrics. MVP writes to local JSON files (`data/leads/`); production will use a proper database (Postgres/Supabase). |
 
 ### HITL Threshold Calculation
 

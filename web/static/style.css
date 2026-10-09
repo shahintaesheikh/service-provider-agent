@@ -1,0 +1,521 @@
+/* Home Service Agent — iPhone "in-call" UI
+   ────────────────────────────────────────────────────────────────────────
+   Dark active-call screen centered in the viewport with a home-service
+   side panel for operator metadata (user info + lead result).
+*/
+
+* { box-sizing: border-box; }
+
+:root {
+  /* iPhone-ish palette */
+  --bg-page:        #0c0c0e;
+  --bg-bezel:       #050505;
+  --bg-screen-top:  #1c1c1f;
+  --bg-screen-bot:  #0e0e10;
+  --fg:             #f5f5f7;
+  --fg-muted:       #9a9aa0;
+  --fg-dim:         #6c6c70;
+  --accent-blue:    #0a84ff;
+  --accent-teal:    #30b0c0;
+  --accent-green:   #34c759;
+  --accent-red:     #ff3b30;
+  --accent-amber:   #ff9f0a;
+  --ctrl-bg:        rgba(255,255,255,0.16);
+  --ctrl-bg-on:     #ffffff;
+  --bubble-agent:   rgba(118,118,128,0.36);
+  --bubble-caller:  #0a84ff;
+
+  /* Side-panel palette (dark to match the phone) */
+  --panel-bg:       #18181b;
+  --panel-border:   rgba(255,255,255,0.08);
+  --panel-fg:       #e5e5ea;
+  --panel-muted:    #98989f;
+
+  /* Phone geometry — iPhone 14 Pro logical viewport */
+  --phone-w: 390px;
+  --phone-h: 844px;
+  --phone-radius: 56px;
+  --bezel: 12px;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg-page);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+               system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Stage layout: phone centered, side panel to the right ─────────── */
+
+.stage {
+  min-height: 100vh;
+  padding: 32px 24px;
+  display: grid;
+  grid-template-columns: 1fr auto auto 1fr;
+  gap: 28px;
+  align-items: center;
+  justify-items: center;
+}
+
+.phone { grid-column: 2; }
+.side-panel { grid-column: 3; }
+
+@media (max-width: 820px) {
+  .stage {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+  .phone, .side-panel { grid-column: 1; }
+  .side-panel { width: 100%; max-width: 480px; padding-top: 0; }
+}
+
+/* ── iPhone shell ──────────────────────────────────────────────────── */
+
+.phone {
+  width: var(--phone-w);
+  height: var(--phone-h);
+}
+
+.bezel {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-bezel);
+  border-radius: var(--phone-radius);
+  padding: var(--bezel);
+  box-shadow:
+    0 0 0 2px #2a2a2c inset,
+    0 20px 60px rgba(0,0,0,0.6),
+    0 0 0 6px #1a1a1c;
+}
+
+.screen {
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--phone-radius) - var(--bezel));
+  background:
+    radial-gradient(120% 80% at 50% 0%, #2a2a2e 0%, var(--bg-screen-top) 35%, var(--bg-screen-bot) 100%);
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto auto auto;
+  padding: 14px 18px 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Status bar (cosmetic — clock comes from JS) */
+.statusbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 22px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 0 4px;
+}
+.sb-time { font-variant-numeric: tabular-nums; }
+.sb-right { display: inline-flex; gap: 6px; align-items: center; }
+.sb-signal {
+  width: 17px; height: 10px;
+  background: var(--fg);
+  clip-path: polygon(0% 100%,12% 100%,12% 75%,38% 75%,38% 50%,64% 50%,64% 25%,100% 25%,100% 100%);
+}
+.sb-wifi {
+  width: 15px; height: 11px;
+  background: var(--fg);
+  clip-path: polygon(50% 0%, 100% 35%, 88% 50%, 50% 25%, 12% 50%, 0% 35%, 50% 30%, 75% 55%, 65% 65%, 50% 55%, 35% 65%, 25% 55%, 50% 60%, 60% 75%, 50% 85%, 40% 75%);
+  border-radius: 2px;
+}
+.sb-battery {
+  width: 26px; height: 12px;
+  border: 1px solid var(--fg);
+  border-radius: 3px;
+  position: relative;
+}
+.sb-battery::before {
+  content: "";
+  position: absolute; top: 1px; bottom: 1px; left: 1px;
+  width: 70%;
+  background: var(--fg);
+  border-radius: 1px;
+}
+.sb-battery::after {
+  content: "";
+  position: absolute; top: 3px; right: -3px;
+  width: 2px; height: 6px;
+  background: var(--fg);
+  border-radius: 0 1px 1px 0;
+}
+
+/* Dynamic island */
+.island {
+  margin: 6px auto 0;
+  width: 120px;
+  height: 32px;
+  background: #000;
+  border-radius: 18px;
+}
+
+/* Callee header (avatar, name, status, timer) */
+.callee {
+  text-align: center;
+  margin-top: 20px;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+.avatar {
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #0a84ff, #30b0c0);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 1px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.callee-name {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.call-meta {
+  font-size: 14px;
+  color: var(--fg-muted);
+  display: flex; gap: 6px; align-items: baseline;
+  min-height: 18px;
+}
+.call-status::first-letter { text-transform: uppercase; }
+.call-status[data-state="listening"] { color: var(--accent-green); }
+.call-status[data-state="speaking"]  { color: var(--accent-blue); }
+.call-status[data-state="thinking"]  { color: var(--accent-amber); }
+.call-status[data-state="error"]     { color: var(--accent-red); }
+.call-timer { font-variant-numeric: tabular-nums; }
+.call-timer::before { content: "·"; margin-right: 6px; color: var(--fg-dim); }
+
+/* ── Chat transcript (iMessage-style bubbles) ─────────────────────── */
+
+.transcript {
+  margin-top: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.transcript::-webkit-scrollbar { width: 4px; }
+.transcript::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+.turn {
+  max-width: 78%;
+  padding: 9px 13px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.35;
+  word-wrap: break-word;
+  display: flex; flex-direction: column;
+}
+.turn .who {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+  margin-bottom: 2px;
+}
+.turn.agent {
+  align-self: flex-start;
+  background: var(--bubble-agent);
+  border-bottom-left-radius: 6px;
+  color: var(--fg);
+}
+.turn.caller {
+  align-self: flex-end;
+  background: var(--bubble-caller);
+  border-bottom-right-radius: 6px;
+  color: #fff;
+}
+.turn.caller .who { color: rgba(255,255,255,0.7); }
+.turn.interim { opacity: 0.55; font-style: italic; }
+
+/* ── Action row ────────────────────────────────────────────────────── */
+
+.call-controls {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  padding: 14px 4px 8px;
+  gap: 16px;
+}
+
+.ctrl-btn {
+  width: 64px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 0;
+  font-family: inherit;
+}
+.ctrl-icon {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: var(--ctrl-bg);
+  display: grid; place-items: center;
+  transition: background 0.15s;
+  position: relative;
+}
+.ctrl-btn:hover .ctrl-icon { background: rgba(255,255,255,0.24); }
+.ctrl-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ctrl-btn[aria-pressed="true"] .ctrl-icon {
+  background: var(--ctrl-bg-on);
+  color: #000;
+}
+
+/* Speaker glyph */
+.ctrl-speaker::before {
+  content: "";
+  width: 14px; height: 12px;
+  background: currentColor;
+  clip-path: polygon(0 35%, 35% 35%, 60% 0, 60% 100%, 35% 65%, 0 65%);
+  margin-right: 4px;
+}
+.ctrl-speaker::after {
+  content: "))";
+  font-size: 16px;
+  font-weight: 800;
+  color: currentColor;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.ctrl-btn[aria-pressed="false"] .ctrl-speaker::after { content: "✕"; font-size: 12px; }
+
+/* Reset / new-call glyph (circular arrow) */
+.ctrl-reset::before {
+  content: "↺";
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1;
+  color: currentColor;
+}
+
+/* Main call button (teal idle → red in-call) */
+.call-btn {
+  width: 72px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0;
+  font-family: inherit;
+}
+.call-btn .call-icon {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: var(--accent-teal);
+  display: grid; place-items: center;
+  box-shadow: 0 4px 14px rgba(48,176,192,0.4);
+  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+  position: relative;
+}
+.call-btn .call-icon::before {
+  content: "";
+  width: 24px; height: 24px;
+  background: #fff;
+  /* iPhone handset glyph */
+  clip-path: polygon(
+    8% 30%, 25% 8%, 45% 22%, 38% 35%,
+    62% 60%, 75% 52%, 92% 70%, 78% 90%,
+    52% 80%, 22% 52%, 8% 38%
+  );
+}
+.call-btn[aria-pressed="true"] .call-icon {
+  background: var(--accent-red);
+  box-shadow: 0 4px 14px rgba(255,59,48,0.45);
+}
+.call-btn[aria-pressed="true"] .call-icon::before {
+  transform: rotate(135deg);
+}
+.call-btn:hover .call-icon { transform: scale(1.05); }
+.call-btn:active .call-icon { transform: scale(0.97); }
+.call-btn:disabled .call-icon { background: var(--fg-dim); box-shadow: none; }
+.mic-label { text-transform: lowercase; }
+
+/* Pulse halo while mic is active */
+.call-btn[aria-pressed="true"] .call-icon::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-red);
+  opacity: 0;
+  animation: pulse 1.5s ease-out infinite;
+}
+@keyframes pulse {
+  0%   { opacity: 0.7; transform: scale(0.9); }
+  100% { opacity: 0;   transform: scale(1.4); }
+}
+
+/* ── Text composer ────────────────────────────────────────────────── */
+
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 4px;
+}
+.composer input {
+  flex: 1;
+  background: rgba(118,118,128,0.32);
+  color: var(--fg);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  padding: 9px 14px;
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.composer input::placeholder { color: var(--fg-dim); }
+.composer input:focus { background: rgba(118,118,128,0.46); }
+.composer .send {
+  width: 32px; height: 32px;
+  border: 0; border-radius: 50%;
+  background: var(--accent-blue);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  display: grid; place-items: center;
+}
+.composer .send:disabled { background: var(--fg-dim); cursor: not-allowed; }
+
+/* Home indicator */
+.home-indicator {
+  height: 5px;
+  width: 130px;
+  background: var(--fg);
+  border-radius: 3px;
+  margin: 4px auto 0;
+  opacity: 0.85;
+}
+
+/* ── Side panel ───────────────────────────────────────────────────── */
+
+.side-panel {
+  width: 320px;
+  display: grid;
+  gap: 16px;
+  align-self: stretch;
+  padding-top: 60px;
+}
+
+.panel-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 16px 16px 14px;
+  color: var(--panel-fg);
+}
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--panel-muted);
+}
+
+.field { display: grid; gap: 6px; }
+.field-label {
+  font-size: 12px;
+  color: var(--panel-muted);
+  font-weight: 500;
+}
+.field input {
+  background: rgba(255,255,255,0.05);
+  color: var(--panel-fg);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.field input:focus { border-color: var(--accent-blue); }
+
+.caller-info {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--panel-fg);
+  background: rgba(10,132,255,0.12);
+  border: 1px solid rgba(10,132,255,0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+  line-height: 1.45;
+}
+.caller-info b { color: #fff; }
+
+.result dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.result dt {
+  color: var(--panel-muted);
+  font-weight: 500;
+}
+.result dd {
+  margin: 0;
+  color: var(--panel-fg);
+  word-break: break-word;
+}
+.result .summary {
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 13px;
+  color: var(--panel-muted);
+  line-height: 1.5;
+}
+.pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #fff;
+}
+.pill.low       { background: #30d158; }
+.pill.medium    { background: #ff9f0a; }
+.pill.high      { background: #ff453a; }
+.pill.emergency { background: #d70015; }
+
+.hint {
+  font-size: 12px;
+  color: var(--panel-muted);
+  padding: 0 4px;
+  line-height: 1.5;
+}
+.hint b { color: var(--panel-fg); }
