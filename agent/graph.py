@@ -15,7 +15,7 @@ only knows about its own slice. The wiring order is:
     → api_selection                        (Jev Choice)
     → urgency_dimension                    (Jev Score/Noul)
     → call_google_places                   (Google Places API)
-    → call_yelp                            (stub — Yelp not yet integrated)
+    → call_yelp                            (Yelp Fusion API)
     → merge_and_rank                       (dedup + rating sort)
     → trap_check                           (over-escalation guard)
     → urgency_score                        (Risk = P × C via hitl_utils)
@@ -55,7 +55,12 @@ from tools.jev_utils import (
     classify_subcategory,
     select_api,
 )
-from tools.provider_search import search_providers, get_place_details
+from tools.provider_search import (
+    search_providers,
+    get_place_details,
+    search_yelp_providers,
+    merge_google_and_yelp,
+)
 
 
 # ── Jev-integrated node factories ───────────────────────────────────────────
@@ -245,14 +250,38 @@ def make_call_google_places():
 
 
 def make_call_yelp():
-    """Yelp Fusion API call — stub.
+    """Yelp Fusion API call using tools.provider_search.
 
-    Yelp integration is not yet implemented in the tools module.
-    Passes through existing provider_matches unchanged.
+    Calls search_yelp_providers() with the subcategory's vendor type and
+    the resolved location, then merges with Google Places results via
+    merge_google_and_yelp().  Gracefully handles missing YELP_API_KEY.
     """
     def call_yelp(state: WorkflowState):
+        classification = state.get("classification") or {}
+        subcategory = (classification.get("subcategory") or "").lower()
+        category = (classification.get("category") or "").lower()
+
+        # Determine the vendor/service type for the API query
+        vendor_type = SUBCATEGORY_TO_VENDOR_TYPE.get(subcategory, category)
+        if not vendor_type or vendor_type == "other":
+            vendor_type = "home_services"
+
+        city = state.get("city") or "Santa Barbara"
+        location_str = f"{city}, CA"
+
+        yelp_results = search_yelp_providers(
+            service_type=vendor_type,
+            location=location_str,
+            max_results=5,
+        )
+
+        # Merge Yelp results into existing Google Places results
+        google_results = state.get("provider_matches") or []
+        merged = merge_google_and_yelp(google_results, yelp_results)
+
         return {
-            "provider_matches": state.get("provider_matches") or [],
+            "yelp_results": yelp_results,
+            "provider_matches": merged,
         }
 
     return call_yelp
