@@ -572,3 +572,199 @@ def merge_and_rank_providers(
     deduped.sort(key=_sort_key)
 
     return deduped[:5]
+
+
+# ---------------------------------------------------------------------------
+# 7.  search_yelp_providers  —  Yelp Fusion Business Search
+# ---------------------------------------------------------------------------
+
+
+YELP_API_KEY: str = os.environ.get("YELP_API_KEY", "")
+
+YELP_BASE_URL: str = "https://api.yelp.com/v3"
+
+
+def search_yelp_providers(
+    service_type: str,
+    location: str,
+    api_key: Optional[str] = None,
+    max_results: int = 5,
+) -> list[dict[str, Any]]:
+    """Search Yelp Fusion API for providers by service type and location.
+
+    Free tier: ~500 calls/day limit.  Use sparingly as secondary source.
+
+    Args:
+        service_type: Category label, e.g. ``"plumber"``, ``"electrician"``.
+        location: Human-readable location, e.g. ``"Santa Barbara, CA"``.
+        api_key: Optional override for the ``YELP_API_KEY`` env var.
+        max_results: Maximum number of results (clamped to 1\u201350, default 5).
+
+    Returns:
+        A list of provider dicts with keys:
+        - ``name`` (str)
+        - ``phone`` (str) \u2014 national phone number
+        - ``address`` (str) \u2014 formatted address
+        - ``rating`` (float) \u2014 Yelp rating (1.0\u20135.0)
+        - ``review_count`` (int) \u2014 number of Yelp reviews
+        - ``yelp_url`` (str) \u2014 URL to the Yelp business page
+        - ``categories`` (list[str]) \u2014 Yelp category tags
+        - ``source`` (str) \u2014 always ``"yelp"``
+        Returns an empty list on any API or network error (never raises).
+    """
+    key: str = api_key or YELP_API_KEY
+    if not key:
+        return []
+
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "accept": "application/json",
+    }
+    params: dict[str, Any] = {
+        "term": service_type,
+        "location": location,
+        "limit": max(1, min(max_results, 50)),
+        "sort_by": "rating",
+    }
+
+    try:
+        resp = requests.get(
+            f"{YELP_BASE_URL}/businesses/search",
+            headers=headers,
+            params=params,
+            timeout=TIMEOUT_SECONDS,
+        )
+        # 403 \u2192 invalid/revoked key  429 \u2192 rate limited
+        if resp.status_code in (403, 429):
+            return []
+        resp.raise_for_status()
+        data = resp.json()
+        businesses = data.get("businesses", [])
+
+        results: list[dict[str, Any]] = []
+        for biz in businesses:
+            location_data = biz.get("location", {}) or {}
+            address_parts = location_data.get("display_address", [])
+            address = ", ".join(address_parts) if address_parts else ""
+
+            categories = [
+                cat.get("title", "")
+                for cat in biz.get("categories", [])
+                if cat.get("title")
+            ]
+
+            results.append(
+                {
+                    "name": biz.get("name", ""),
+                    "phone": biz.get("phone", ""),
+                    "address": address,
+                    "rating": biz.get("rating"),
+                    "review_count": biz.get("review_count", 0),
+                    "yelp_url": biz.get("url", ""),
+                    "categories": categories,
+                    "source": "yelp",
+                }
+            )
+
+        return results
+    except (requests.RequestException, ValueError, KeyError):
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 8.  merge_google_and_yelp  \u2014  Merge Google Places + Yelp by phone
+# ---------------------------------------------------------------------------
+
+
+def merge_google_and_yelp(
+    google_results: list[dict[str, Any]],
+    yelp_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge Google Places and Yelp results, deduplicating by phone number.
+
+    Primary sort: Google rating descending.  Yelp-only results are appended
+    as secondary options after all Google-sourced entries.
+
+    Args:
+        google_results: Results from ``search_providers`` or
+            ``search_providers_nearby`` (Google Places format).
+        yelp_results: Results from ``search_yelp_providers`` (Yelp format).
+
+    Returns:
+        A merged list sorted by ``rating`` descending.  Google entries are
+        enriched with Yelp fields (``yelp_rating``, ``yelp_review_count``,
+        ``yelp_url``) when a phone-number match is found.  Providers only
+        on Yelp are included as secondary options at the end.
+    """
+    if not google_results and not yelp_results:
+        return []
+
+    # Build a phone \u2192 Yelp entry lookup (normalised to digits)
+    yelp_by_phone: dict[str, dict[str, Any]] = {}
+    for yelp in yelp_results:
+        phone = yelp.get("phone", "")
+        if phone:
+            norm = re.sub(r"[^\d]", "", phone)
+            if norm:
+                yelp_by_phone[norm] = yelp
+
+    # Phase 1 \u2014 enrich Google entries with matching Yelp data
+    enriched_google: list[dict[str, Any]] = []
+    matched_phones: set[str] = set()
+
+    for google in google_results:
+        g_phone = google.get("nationalPhoneNumber") or google.get("phone", "")
+        g_norm = re.sub(r"[^\d]", "", g_phone) if g_phone else ""
+
+        if g_norm and g_norm in yelp_by_phone:
+            yelp_data = yelp_by_phone[g_norm]
+            enriched_google.append(
+                {
+                    **google,
+                    "yelp_rating": yelp_data.get("rating"),
+                    "yelp_review_count": yelp_data.get("review_count", 0),
+                    "yelp_url": yelp_data.get("yelp_url", ""),
+                }
+            )
+            matched_phones.add(g_norm)
+        else:
+            enriched_google.append(google)
+
+    # Sort Google-sourced entries by rating desc
+    def _google_key(p: dict[str, Any]) -> tuple:
+        rating = p.get("rating") or 0.0
+        reviews = p.get("userRatingCount") or 0
+        return (-rating, -reviews)
+
+    enriched_google.sort(key=_google_key)
+
+    # Phase 2 \u2014 append Yelp-only entries as secondary options
+    yelp_only: list[dict[str, Any]] = []
+    for yelp in yelp_results:
+        y_phone = yelp.get("phone", "")
+        y_norm = re.sub(r"[^\d]", "", y_phone) if y_phone else ""
+        if y_norm and y_norm not in matched_phones:
+            yelp_only.append(
+                {
+                    "name": yelp.get("name", ""),
+                    "displayName": yelp.get("name", ""),
+                    "formattedAddress": yelp.get("address", ""),
+                    "phone": yelp.get("phone", ""),
+                    "rating": yelp.get("rating"),
+                    "userRatingCount": yelp.get("review_count", 0),
+                    "yelp_rating": yelp.get("rating"),
+                    "yelp_review_count": yelp.get("review_count", 0),
+                    "yelp_url": yelp.get("yelp_url", ""),
+                    "source": "yelp",
+                }
+            )
+            matched_phones.add(y_norm)
+
+    def _yelp_only_key(p: dict[str, Any]) -> tuple:
+        rating = p.get("rating") or 0.0
+        reviews = p.get("userRatingCount") or p.get("yelp_review_count") or 0
+        return (-rating, -reviews)
+
+    yelp_only.sort(key=_yelp_only_key)
+
+    return enriched_google + yelp_only
