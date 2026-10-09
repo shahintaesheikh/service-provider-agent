@@ -39,19 +39,11 @@
           <!-- Live transcript / chat -->
           <section class="transcript" id="transcript" aria-live="polite"></section>
 
-          <!-- Call action row: speaker (TTS), reset, call/end -->
+          <!-- Call action row: reset -->
           <div class="call-controls">
-            <button id="ttsToggle" class="ctrl-btn" type="button" aria-pressed="true" title="Toggle agent voice">
-              <span class="ctrl-icon ctrl-speaker" aria-hidden="true"></span>
-              <span class="ctrl-label">speaker</span>
-            </button>
             <button id="resetBtn" class="ctrl-btn" type="button" title="New call">
               <span class="ctrl-icon ctrl-reset" aria-hidden="true"></span>
               <span class="ctrl-label">new call</span>
-            </button>
-            <button id="micBtn" class="call-btn" type="button" aria-pressed="false">
-              <span class="call-icon" aria-hidden="true"></span>
-              <span class="mic-label">call</span>
             </button>
           </div>
 
@@ -87,13 +79,10 @@
         <p class="summary" id="summary"></p>
       </section>
 
-      <footer class="hint" id="hint">
-        Tap <b>call</b> to start, or type below. Voice powered by ElevenLabs.
-      </footer>
+      <footer class="hint" id="hint">Type a message below</footer>
     </aside>
   </main>
 
-  <script src="https://unpkg.com/@elevenlabs/client@1.8.0/dist/lib.iife.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

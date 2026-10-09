@@ -31,6 +31,3 @@ typesafe-sdk>=0.7.0
 
 # ── Provider data ──────────────────────────────────────────────────
 googlemaps>=4.10.0
-
-# ── Voice / ElevenLabs (optional — STT/TTS) ───────────────────────
-elevenlabs>=1.8.0,<2.0.0              # Scribe v2 realtime STT + Flash v2.5 TTS

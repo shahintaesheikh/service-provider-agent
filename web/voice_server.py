@@ -1,7 +1,7 @@
-"""Voice demo server.
+"""Text-only chat server for the Home Service Agent.
 
 Wraps the Service Provider Agent behind a tiny HTTP shim so a browser
-frontend can drive the agent with ElevenLabs STT/TTS or typed input.
+frontend can drive the agent with typed text input.
 
 The agent contract matches the home service flow — this server builds the
 same `[{"speaker": ..., "text": ...}]` shape and hands it to the same graph
@@ -13,16 +13,14 @@ Run (from the repo root):
 Then open http://localhost:8000/ in Chrome or Edge.
 
 Adapted from the reference project (CBRE → Home Service Agent branding).
-ElevenLabs voice features are optional — text input always works as fallback.
 """
 from __future__ import annotations
 
 import json
-import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 # This script lives at web/voice_server.py; the `agent` package lives one
 # directory up at the repo root. When invoked as `python web/voice_server.py`,
@@ -35,7 +33,6 @@ if str(_REPO_ROOT) not in sys.path:
 from langchain_openai import ChatOpenAI
 
 from agent import _flatten, get_graph
-from agent.config import CATEGORY_SUBCATEGORIES
 from agent.intake import make_extract_and_check
 from agent.utils import _lookup_profile
 
@@ -69,92 +66,6 @@ def _get_voice_extractor():
     except Exception:
         _VOICE_EXTRACTOR = None
     return _VOICE_EXTRACTOR
-
-# ── ElevenLabs (Scribe v2 realtime STT + Flash v2.5 streaming TTS) ───────────
-# Optional: server runs without it, but /api/scribe-token + /api/tts/stream
-# return 503 and the UI falls back to a "voice unavailable" message.
-# Lazy import so the server works regardless of Python version / pip install.
-_EL = None
-_EL_INIT_DONE = False
-
-
-def _get_el():
-    global _EL, _EL_INIT_DONE
-    if _EL_INIT_DONE:
-        return _EL
-    _EL_INIT_DONE = True
-    try:
-        from elevenlabs import ElevenLabs
-        api_key = os.getenv("ELEVENLABS_API_KEY")
-        _EL = ElevenLabs(api_key=api_key) if api_key else None
-    except ImportError:
-        _EL = None
-    return _EL
-
-# Rachel — warm, conversational. Good for empathetic homeowner conversations.
-TTS_VOICE_ID = "21m00Tcm4TzfDVHbD9J"
-# Flash v2.5 — ~75ms TTFB, multilingual, the lowest-latency realtime model.
-TTS_MODEL_ID = "eleven_flash_v2_5"
-# MP3 streams cleanly into a browser <audio> element; cheap to proxy.
-TTS_OUTPUT_FORMAT = "mp3_44100_128"
-
-
-_KEYTERM_MAX_LEN = 20  # ElevenLabs Scribe per-keyterm hard cap
-
-
-def _shorten_keyterm(name: str) -> str | None:
-    """Reduce a term to a ≤20-char anchor that Scribe will accept.
-
-    Drops everything past the longest leading word-prefix that still fits in 20
-    chars. "Water Heater Repair" → "Water Heater Repair" (18). If even the
-    first word exceeds 20, truncates it. Returns None for empty input.
-    """
-    name = (name or "").strip()
-    if not name:
-        return None
-    if len(name) <= _KEYTERM_MAX_LEN:
-        return name
-    words = name.split()
-    out = words[0][:_KEYTERM_MAX_LEN]
-    for w in words[1:]:
-        candidate = f"{out} {w}"
-        if len(candidate) > _KEYTERM_MAX_LEN:
-            break
-        out = candidate
-    return out
-
-
-def _build_keyterms() -> list[str]:
-    """Bias Scribe toward domain proper nouns the model would otherwise mishear.
-
-    Source: shortened service category/subcategory phrases + a small set of
-    high-value domain words. Each term is ≤20 chars per the Scribe API limit,
-    deduped case-insensitively, capped at 100 total.
-    """
-    raw: list[str] = []
-    for subs in CATEGORY_SUBCATEGORIES.values():
-        raw.extend(s.replace("_", " ") for s in subs)
-    raw.extend([
-        "plumbing", "electrical", "HVAC", "leak", "emergency", "gas",
-        "water heater", "clogged drain", "broken pipe", "furnace",
-        "air conditioner", "roof leak", "pest control", "lockout",
-        "Santa Barbara", "Goleta", "home service",
-    ])
-    seen, out = set(), []
-    for t in raw:
-        t = t.strip()
-        if not t or len(t) > _KEYTERM_MAX_LEN:
-            continue
-        if t.lower() in seen:
-            continue
-        seen.add(t.lower())
-        out.append(t)
-        if len(out) >= 100:
-            break
-    return out
-
-
-_KEYTERMS = _build_keyterms()
 
 
 def _caller_word_count(turns: list[dict]) -> int:
@@ -394,39 +305,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
-    def _stream_tts(self, text: str) -> None:
-        """Proxy ElevenLabs Flash v2.5 streaming TTS to the browser as MP3.
-
-        Each yielded chunk is forwarded immediately so playback can begin
-        before the full utterance is rendered (~75ms TTFB with Flash).
-        """
-        try:
-            audio_iter = _get_el().text_to_speech.stream(
-                voice_id=TTS_VOICE_ID,
-                text=text,
-                model_id=TTS_MODEL_ID,
-                output_format=TTS_OUTPUT_FORMAT,
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._send_json(502, {"error": f"tts upstream error: {exc}"})
-            return
-
-        self.send_response(200)
-        self.send_header("Content-Type", "audio/mpeg")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Connection", "close")
-        self.end_headers()
-
-        try:
-            for chunk in audio_iter:
-                if chunk:
-                    self.wfile.write(chunk)
-            self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError):
-            # Client navigated away or hit barge-in mid-stream. Expected.
-            pass
-
     def do_GET(self):
         url = urlparse(self.path)
         path = url.path
@@ -459,60 +337,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "ok", "agent": "home-service-agent"})
             return
 
-        if path == "/api/keyterms":
-            self._send_json(200, {"keyterms": _KEYTERMS})
-            return
-
-        if path == "/api/scribe-token":
-            if _get_el() is None:
-                self._send_json(503, {"error": "ELEVENLABS_API_KEY not configured"})
-                return
-            try:
-                token = _get_el().tokens.single_use.create(token_type="realtime_scribe")
-            except Exception as exc:  # noqa: BLE001
-                self._send_json(502, {"error": f"token mint failed: {exc}"})
-                return
-            self._send_json(200, {"token": token.token})
-            return
-
-        # GET form for TTS — kept for quick curl testing. POST is preferred
-        # for production because long text overflows URL length limits.
-        if path == "/api/tts/stream":
-            if _get_el() is None:
-                self._send_json(503, {"error": "ELEVENLABS_API_KEY not configured"})
-                return
-            qs = parse_qs(url.query)
-            text = (qs.get("text") or [""])[0].strip()
-            if not text:
-                self._send_json(400, {"error": "missing text"})
-                return
-            self._stream_tts(text)
-            return
-
         self.send_error(404)
 
     def do_POST(self):
         url = urlparse(self.path)
-
-        if url.path == "/api/tts/stream":
-            if _get_el() is None:
-                self._send_json(503, {"error": "ELEVENLABS_API_KEY not configured"})
-                return
-            length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > 100_000:
-                self._send_json(400, {"error": "missing or oversized body"})
-                return
-            try:
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            except json.JSONDecodeError as e:
-                self._send_json(400, {"error": f"bad json: {e}"})
-                return
-            text = (payload.get("text") or "").strip()
-            if not text:
-                self._send_json(400, {"error": "text required"})
-                return
-            self._stream_tts(text)
-            return
 
         if url.path != "/api/classify":
             self.send_error(404)
@@ -559,15 +387,7 @@ def main() -> None:
     print(f"Warming graph…")
     get_graph()  # eager compile so first request isn't slow
 
-    el = _get_el()
-    if el is None:
-        print("⚠  ELEVENLABS_API_KEY not set — /api/scribe-token + /api/tts/stream "
-              "will return 503; UI will fall back to typed-only mode.")
-    else:
-        print(f"ElevenLabs voice: Scribe v2 realtime STT + {TTS_MODEL_ID} TTS "
-              f"(voice {TTS_VOICE_ID}, {len(_KEYTERMS)} keyterms)")
-
-    print(f"Home Service Agent — voice demo listening on http://localhost:{PORT}/")
+    print(f"Home Service Agent — chat server listening on http://localhost:{PORT}/")
 
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     try:
