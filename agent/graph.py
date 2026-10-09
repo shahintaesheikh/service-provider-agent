@@ -12,10 +12,8 @@ only knows about its own slice. The wiring order is:
     → build_enriched_query                 (query builder)
     → classify_category                    (Jev Choice)
     → classify_subcategory                 (Jev Choice)
-    → api_selection                        (Jev Choice)
     → urgency_dimension                    (Jev Score/Noul)
-    → call_google_places                   (Google Places API)
-    → call_yelp                            (stub — Yelp not yet integrated)
+    → call_google_places                   (Google Places API — deterministic)
     → merge_and_rank                       (dedup + rating sort)
     → trap_check                           (over-escalation guard)
     → urgency_score                        (Risk = P × C via hitl_utils)
@@ -52,7 +50,6 @@ from tools.jev_utils import (
     assess_urgency_factor,
     classify_category,
     classify_subcategory,
-    select_api,
 )
 from tools.provider_search import search_providers, get_place_details
 
@@ -137,48 +134,6 @@ def make_classify_subcategory():
         }
 
     return classify_subcategory_node
-
-
-def make_api_selection():
-    """Jev Choice node for API selection.
-
-    Uses tools.jev_utils.select_api() to decide which provider API(s)
-    to query: Google Places, CSLB, Both, or None.
-    """
-    def api_selection_node(state: WorkflowState):
-        classification = state.get("classification") or {}
-        category = classification.get("category") or ""
-
-        description = (
-            state.get("enriched_query")
-            or state.get("entity", {}).get("problem_description")
-            or state["transcript"]
-        )
-
-        try:
-            result = select_api(description, category)
-            api_choice = result.get("api", "Google Places")
-            api_confidence = result.get("confidence", 1.0)
-        except (RuntimeError, Exception):
-            # Graceful fallback — default to Google Places
-            api_choice = "Google Places"
-            api_confidence = 1.0
-
-        # Map Jev API names to LangGraph router values
-        api_map = {
-            "Google Places": "google_places",
-            "Google Places + CSLB": "both",
-            "CSLB only": "google_places",  # treat as google_places for now
-            "None": "none",
-        }
-        mapped = api_map.get(api_choice, "google_places")
-
-        return {
-            "classification": classification,
-            "api_selection": mapped,
-        }
-
-    return api_selection_node
 
 
 def make_call_google_places():
@@ -360,27 +315,6 @@ def needs_followup(state: WorkflowState) -> Literal["gather_followup", "build_en
     return "build_enriched_query"
 
 
-def api_selection_route(state: WorkflowState) -> Literal["call_google_places", "call_yelp", "merge_and_rank"]:
-    """Route based on api_selection decision."""
-    selection = state.get("api_selection")
-    if selection == "google_places":
-        return "call_google_places"
-    elif selection == "both":
-        return "call_google_places"
-    elif selection == "yelp":
-        return "call_yelp"
-    else:
-        return "merge_and_rank"
-
-
-def after_google_route(state: WorkflowState) -> Literal["call_yelp", "merge_and_rank"]:
-    """After Google Places, route to Yelp if selected, or to merge_and_rank."""
-    selection = state.get("api_selection")
-    if selection == "both":
-        return "call_yelp"
-    return "merge_and_rank"
-
-
 def override_route(state: WorkflowState) -> Literal["override_node", "lead_quality_check"]:
     """After validator_gate, route through override if human_override exists."""
     if state.get("human_override"):
@@ -412,7 +346,6 @@ def create_graph(eval_mode: bool = True):
     workflow.add_node("build_enriched_query", timed_node("build_enriched_query", build_enriched_query))
     workflow.add_node("classify_category", timed_node("classify_category", make_classify_category()))
     workflow.add_node("classify_subcategory", timed_node("classify_subcategory", make_classify_subcategory()))
-    workflow.add_node("api_selection", timed_node("api_selection", make_api_selection()))
     workflow.add_node("urgency_dimension", timed_node("urgency_dimension", make_urgency_dimension()))
     workflow.add_node("call_google_places", timed_node("call_google_places", make_call_google_places()))
     workflow.add_node("call_yelp", timed_node("call_yelp", make_call_yelp()))
@@ -436,15 +369,13 @@ def create_graph(eval_mode: bool = True):
 
     # Classification phase (Jev Choice)
     workflow.add_edge("classify_category", "classify_subcategory")
-    workflow.add_edge("classify_subcategory", "api_selection")
 
-    # Urgency dimension assessment (Jev Score/Noul) — runs before API routing
-    workflow.add_edge("api_selection", "urgency_dimension")
+    # Urgency dimension assessment (Jev Score/Noul) — runs before provider search
+    workflow.add_edge("classify_subcategory", "urgency_dimension")
 
-    # API calling phase (conditional on selection, triggered after urgency_dimension)
-    workflow.add_conditional_edges("urgency_dimension", api_selection_route)
-    workflow.add_conditional_edges("call_google_places", after_google_route)
-    workflow.add_edge("call_yelp", "merge_and_rank")
+    # Provider search — always uses Google Places (deterministic, no Jev API selection)
+    workflow.add_edge("urgency_dimension", "call_google_places")
+    workflow.add_edge("call_google_places", "merge_and_rank")
 
     # Provider processing
     workflow.add_edge("merge_and_rank", "trap_check")
