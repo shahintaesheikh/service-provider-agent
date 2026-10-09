@@ -242,7 +242,6 @@ html, body {
   color: #fff;
 }
 .turn.caller .who { color: rgba(255,255,255,0.7); }
-.turn.interim { opacity: 0.55; font-style: italic; }
 
 /* ── Action row ────────────────────────────────────────────────────── */
 
@@ -283,26 +282,6 @@ html, body {
   color: #000;
 }
 
-/* Speaker glyph */
-.ctrl-speaker::before {
-  content: "";
-  width: 14px; height: 12px;
-  background: currentColor;
-  clip-path: polygon(0 35%, 35% 35%, 60% 0, 60% 100%, 35% 65%, 0 65%);
-  margin-right: 4px;
-}
-.ctrl-speaker::after {
-  content: "))";
-  font-size: 16px;
-  font-weight: 800;
-  color: currentColor;
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-}
-.ctrl-btn[aria-pressed="false"] .ctrl-speaker::after { content: "✕"; font-size: 12px; }
-
 /* Reset / new-call glyph (circular arrow) */
 .ctrl-reset::before {
   content: "↺";
@@ -310,68 +289,6 @@ html, body {
   font-weight: 400;
   line-height: 1;
   color: currentColor;
-}
-
-/* Main call button (teal idle → red in-call) */
-.call-btn {
-  width: 72px;
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  background: none;
-  border: 0;
-  color: var(--fg);
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 0;
-  font-family: inherit;
-}
-.call-btn .call-icon {
-  width: 64px; height: 64px;
-  border-radius: 50%;
-  background: var(--accent-teal);
-  display: grid; place-items: center;
-  box-shadow: 0 4px 14px rgba(48,176,192,0.4);
-  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
-  position: relative;
-}
-.call-btn .call-icon::before {
-  content: "";
-  width: 24px; height: 24px;
-  background: #fff;
-  /* iPhone handset glyph */
-  clip-path: polygon(
-    8% 30%, 25% 8%, 45% 22%, 38% 35%,
-    62% 60%, 75% 52%, 92% 70%, 78% 90%,
-    52% 80%, 22% 52%, 8% 38%
-  );
-}
-.call-btn[aria-pressed="true"] .call-icon {
-  background: var(--accent-red);
-  box-shadow: 0 4px 14px rgba(255,59,48,0.45);
-}
-.call-btn[aria-pressed="true"] .call-icon::before {
-  transform: rotate(135deg);
-}
-.call-btn:hover .call-icon { transform: scale(1.05); }
-.call-btn:active .call-icon { transform: scale(0.97); }
-.call-btn:disabled .call-icon { background: var(--fg-dim); box-shadow: none; }
-.mic-label { text-transform: lowercase; }
-
-/* Pulse halo while mic is active */
-.call-btn[aria-pressed="true"] .call-icon::after {
-  content: "";
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  border: 2px solid var(--accent-red);
-  opacity: 0;
-  animation: pulse 1.5s ease-out infinite;
-}
-@keyframes pulse {
-  0%   { opacity: 0.7; transform: scale(0.9); }
-  100% { opacity: 0;   transform: scale(1.4); }
 }
 
 /* ── Text composer ────────────────────────────────────────────────── */
