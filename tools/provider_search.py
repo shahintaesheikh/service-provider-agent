@@ -116,7 +116,7 @@ def search_providers(
     query = f"{service_type} in {location}"
     payload: dict[str, Any] = {
         "textQuery": query,
-        "maxResultPageSize": max(1, min(max_results, 20)),
+        "pageSize": max(1, min(max_results, 20)),
     }
 
     headers = _build_headers(key, field_mask=SEARCH_FIELD_MASK)
@@ -185,7 +185,7 @@ def search_providers_nearby(
             }
         },
         "includedTypes": included_types,
-        "maxResultPageSize": max(1, min(max_results, 20)),
+        "pageSize": max(1, min(max_results, 20)),
     }
 
     headers = _build_headers(key, field_mask=SEARCH_FIELD_MASK)
