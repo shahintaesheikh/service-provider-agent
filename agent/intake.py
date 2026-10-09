@@ -107,6 +107,17 @@ def make_extract_and_check(llm: Optional[ChatOpenAI] = None):
 # ── Clarification-gate heuristics ────────────────────────────────────────────
 
 SPARSE_FIRST_TURN_WORDS = 6
+
+def _missing_entities(entity: Optional[dict]) -> list[str]:
+    """Return required entity fields that are None/empty. Pure deterministic check, no LLM."""
+    if not entity:
+        return ["problem_description", "address"]
+    missing = []
+    if not entity.get("problem_description"):
+        missing.append("problem_description")
+    if not entity.get("address") and not entity.get("city"):
+        missing.append("address")
+    return missing
 SPARSE_TOTAL_WORDS = 35
 
 # Surface forms for the home-service subcategory keywords.
