@@ -216,6 +216,7 @@ def make_call_google_places():
         )
 
         # If we have coordinates and text search returned nothing, try nearby search
+        search_expanded = False
         if not results and latitude and longitude:
             from tools.provider_search import search_providers_nearby
             results = search_providers_nearby(
@@ -224,6 +225,34 @@ def make_call_google_places():
                 radius_meters=80467,  # ~50 miles in meters
                 max_results=10,
             )
+
+        # Radius-expansion retry: if still no results, try expanding radius
+        if not results and latitude and longitude:
+            radii = [5000, 15000, 50000]  # 5km → 15km → 50km
+            all_results = []
+            for radius in radii:
+                batch = search_providers_nearby(
+                    latitude=latitude,
+                    longitude=longitude,
+                    radius_meters=radius,
+                    max_results=10,
+                )
+                all_results.extend(batch)
+                if len(all_results) >= 10:
+                    break
+            if all_results:
+                results = all_results[:10]
+                search_expanded = True
+
+        # Normalize displayName from {text, languageCode} dict to plain string
+        for place in results:
+            dn = place.get("displayName")
+            if isinstance(dn, dict):
+                place["name"] = dn.get("text", "") or dn.get("name", "")
+            elif isinstance(dn, str):
+                place["name"] = dn
+            else:
+                place["name"] = place.get("name", "") or place.get("display_name", "")
 
         # Enhance results with place details for the top matches
         enhanced = []
@@ -243,6 +272,7 @@ def make_call_google_places():
         existing = state.get("provider_matches") or []
         return {
             "provider_matches": existing + enhanced,
+            "search_expanded": search_expanded,
         }
 
     return call_google_places
@@ -252,8 +282,9 @@ def make_call_yelp():
     """Yelp Fusion API call using tools.provider_search.
 
     Calls search_yelp_providers() with the subcategory's vendor type and
-    the resolved location, then merges with Google Places results via
-    merge_google_and_yelp().  Gracefully handles missing YELP_API_KEY.
+    the resolved location.  Does NOT merge here — merge_and_rank handles
+    combining Google + Yelp results to avoid a double-merge bug.
+    Gracefully handles missing YELP_API_KEY.
     """
     def call_yelp(state: WorkflowState):
         classification = state.get("classification") or {}
@@ -274,13 +305,11 @@ def make_call_yelp():
             max_results=5,
         )
 
-        # Merge Yelp results into existing Google Places results
-        google_results = state.get("provider_matches") or []
-        merged = merge_google_and_yelp(google_results, yelp_results)
-
+        # Store raw Yelp results; merge_and_rank will combine with Google.
+        # Do NOT merge here — doing so causes results to double when
+        # merge_and_rank runs afterwards.
         return {
             "yelp_results": yelp_results,
-            "provider_matches": merged,
         }
 
     return call_yelp

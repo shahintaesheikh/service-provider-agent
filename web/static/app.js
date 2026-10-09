@@ -98,7 +98,7 @@ function showResult(pred) {
     pd.style.cssText = "font-size:12px;line-height:1.5";
     pd.appendChild(document.createTextNode(p.name || "—"));
     if (p.phone) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(p.phone)); }
-    if (p.address || p.formatted_address) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(p.address || p.formatted_address)); }
+    if (p.address || p.formattedAddress) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(p.address || p.formattedAddress)); }
     if (p.rating != null) { pd.appendChild(document.createElement("br")); pd.appendChild(document.createTextNode(`\u2605 ${p.rating} `)); }
     if (p.open_now != null) { pd.appendChild(document.createTextNode(p.open_now ? "\u2022 Open" : "\u2022 Closed")); }
     appendDtDd(els.resultBody, "Provider", pd);
@@ -169,6 +169,10 @@ async function classifyAndRespond() {
   showCallerProfile(pred.caller_profile);
   showResult(pred);
 
+  if (pred.search_expanded) {
+    pushTurn("agent", "I'm expanding the search to cover a wider area…");
+  }
+
   const needsMore = pred.needs_clarification && pred.clarification_question;
 
   if (needsMore) {
@@ -178,7 +182,7 @@ async function classifyAndRespond() {
   } else {
     state.callClosed = true;
     const providerName = pred.merged_providers && pred.merged_providers.length > 0
-      ? pred.merged_providers[0].name || pred.merged_providers[0].display_name || "a provider"
+      ? pred.merged_providers[0].name || pred.merged_providers[0].displayName || "a provider"
       : "";
     const dispatched = providerName
       ? ` Matching with ${providerName}.`
