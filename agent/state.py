@@ -114,6 +114,8 @@ class WorkflowState(TypedDict):
     provider_matches: list
     merged_providers: list
     trap_check_result: Optional[dict]
+    risk_score: Optional[float]
+    risk_details: Optional[dict]
     urgency_score: Optional[float]
     urgency_signals: Optional[dict]
     address: Optional[str]
