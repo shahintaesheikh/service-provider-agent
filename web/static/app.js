@@ -112,6 +112,18 @@ function showResult(pred) {
   appendDtDd(els.resultBody, "Needs human review", pred.needs_human_review ? "yes" : "no");
   appendDtDd(els.resultBody, "Needs clarification", pred.needs_clarification ? "yes" : "no");
   els.summary.textContent = pred.call_summary || "";
+
+  // Push top provider recommendation to chat transcript
+  const recProviders = pred.merged_providers || pred.provider_matches || [];
+  if (recProviders.length > 0) {
+    const top = recProviders[0];
+    const name = (top.displayName && top.displayName.text) || top.name || top.display_name || "a local provider";
+    const phone = top.nationalPhoneNumber || top.phone || "";
+    const category = pred.category || "";
+    let msg = `I recommend ${name} — they're a great match for your ${category.toLowerCase()} issue.`;
+    if (phone) msg += ` You can reach them at ${phone}.`;
+    pushTurn("agent", msg);
+  }
 }
 
 function showCallerProfile(profile) {
@@ -177,12 +189,7 @@ async function classifyAndRespond() {
     setBusy(false);
   } else {
     state.callClosed = true;
-    const providerName = pred.merged_providers && pred.merged_providers.length > 0
-      ? pred.merged_providers[0].name || pred.merged_providers[0].display_name || "a provider"
-      : "";
-    const dispatched = providerName
-      ? ` Matching with ${providerName}.`
-      : pred.needs_human_review
+    const dispatched = pred.needs_human_review
       ? " Routing this for human review."
       : "";
     const spoken = (pred.call_summary || "Got it.") + dispatched;
@@ -269,3 +276,6 @@ function tickTimer() {
   }
 }
 setInterval(tickTimer, 1000);
+
+// ── Initial agent greeting ───────────────────────────────────────────────────
+pushTurn("agent", "Hi, I'm your Home Service Agent. What's going on at your home?");
