@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Home Service Agent</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="stage">
+    <!-- ── iPhone shell ───────────────────────────────────────────── -->
+    <div class="phone" data-state="idle">
+      <div class="bezel">
+        <div class="screen">
+
+          <!-- Status bar (clock + signal + battery, cosmetic) -->
+          <div class="statusbar">
+            <span class="sb-time" id="sbClock">9:41</span>
+            <span class="sb-right">
+              <span class="sb-signal" aria-hidden="true"></span>
+              <span class="sb-wifi" aria-hidden="true"></span>
+              <span class="sb-battery" aria-hidden="true"></span>
+            </span>
+          </div>
+
+          <!-- Dynamic island -->
+          <div class="island"></div>
+
+          <!-- Callee header (avatar, name, status, timer) -->
+          <header class="callee">
+            <div class="avatar" aria-hidden="true">HSA</div>
+            <div class="callee-name">Home Service Agent</div>
+            <div class="call-meta">
+              <span class="call-status" id="status">tap call to begin</span>
+              <span class="call-timer" id="callTimer" hidden>00:00</span>
+            </div>
+          </header>
+
+          <!-- Live transcript / chat -->
+          <section class="transcript" id="transcript" aria-live="polite"></section>
+
+          <!-- Call action row: reset -->
+          <div class="call-controls">
+            <button id="resetBtn" class="ctrl-btn" type="button" title="New call">
+              <span class="ctrl-icon ctrl-reset" aria-hidden="true"></span>
+              <span class="ctrl-label">new call</span>
+            </button>
+          </div>
+
+          <!-- Always-visible text composer -->
+          <form class="composer" id="composer" autocomplete="off">
+            <input id="textInput" type="text" placeholder="Or type a message…" aria-label="Message" />
+            <button id="sendBtn" class="send" type="submit" aria-label="Send">
+              <span aria-hidden="true">↑</span>
+            </button>
+          </form>
+
+          <!-- Home indicator -->
+          <div class="home-indicator" aria-hidden="true"></div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Operator side panel ────────────────────────────────────── -->
+    <aside class="side-panel">
+      <section class="panel-card">
+        <h3 class="panel-title">User info</h3>
+        <label class="field">
+          <span class="field-label">Phone number</span>
+          <input id="phone" type="tel" placeholder="+1-805-555-0139" autocomplete="off" />
+        </label>
+        <div class="caller-info" id="callerInfo" hidden></div>
+      </section>
+
+      <section class="panel-card result" id="result" hidden>
+        <h3 class="panel-title">Lead result</h3>
+        <dl id="resultBody"></dl>
+        <p class="summary" id="summary"></p>
+      </section>
+
+      <footer class="hint" id="hint">Type a message below</footer>
+    </aside>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
