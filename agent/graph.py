@@ -12,7 +12,7 @@ only knows about its own slice. The wiring order is:
     → build_enriched_query                 (query builder)
     → classify_category                    (Jev Choice)
     → classify_subcategory                 (Jev Choice)
-    → api_selection                        (Jev Choice)
+
     → urgency_dimension                    (Jev Score/Noul)
     → call_google_places                   (Google Places API)
     → call_yelp                            (Yelp Fusion API)
