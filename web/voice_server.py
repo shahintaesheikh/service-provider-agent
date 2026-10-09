@@ -32,7 +32,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from elevenlabs import ElevenLabs
 from langchain_openai import ChatOpenAI
 
 from agent import _flatten, get_graph
@@ -74,8 +73,23 @@ def _get_voice_extractor():
 # ── ElevenLabs (Scribe v2 realtime STT + Flash v2.5 streaming TTS) ───────────
 # Optional: server runs without it, but /api/scribe-token + /api/tts/stream
 # return 503 and the UI falls back to a "voice unavailable" message.
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-_EL: ElevenLabs | None = ElevenLabs(api_key=ELEVENLABS_API_KEY) if ELEVENLABS_API_KEY else None
+# Lazy import so the server works regardless of Python version / pip install.
+_EL = None
+_EL_INIT_DONE = False
+
+
+def _get_el():
+    global _EL, _EL_INIT_DONE
+    if _EL_INIT_DONE:
+        return _EL
+    _EL_INIT_DONE = True
+    try:
+        from elevenlabs import ElevenLabs
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        _EL = ElevenLabs(api_key=api_key) if api_key else None
+    except ImportError:
+        _EL = None
+    return _EL
 
 # Rachel — warm, conversational. Good for empathetic homeowner conversations.
 TTS_VOICE_ID = "21m00Tcm4TzfDVHbD9J"
@@ -387,7 +401,7 @@ class Handler(BaseHTTPRequestHandler):
         before the full utterance is rendered (~75ms TTFB with Flash).
         """
         try:
-            audio_iter = _EL.text_to_speech.stream(
+            audio_iter = _get_el().text_to_speech.stream(
                 voice_id=TTS_VOICE_ID,
                 text=text,
                 model_id=TTS_MODEL_ID,
@@ -450,11 +464,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/scribe-token":
-            if _EL is None:
+            if _get_el() is None:
                 self._send_json(503, {"error": "ELEVENLABS_API_KEY not configured"})
                 return
             try:
-                token = _EL.tokens.single_use.create(token_type="realtime_scribe")
+                token = _get_el().tokens.single_use.create(token_type="realtime_scribe")
             except Exception as exc:  # noqa: BLE001
                 self._send_json(502, {"error": f"token mint failed: {exc}"})
                 return
@@ -464,7 +478,7 @@ class Handler(BaseHTTPRequestHandler):
         # GET form for TTS — kept for quick curl testing. POST is preferred
         # for production because long text overflows URL length limits.
         if path == "/api/tts/stream":
-            if _EL is None:
+            if _get_el() is None:
                 self._send_json(503, {"error": "ELEVENLABS_API_KEY not configured"})
                 return
             qs = parse_qs(url.query)
@@ -481,7 +495,7 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
 
         if url.path == "/api/tts/stream":
-            if _EL is None:
+            if _get_el() is None:
                 self._send_json(503, {"error": "ELEVENLABS_API_KEY not configured"})
                 return
             length = int(self.headers.get("Content-Length", "0"))
@@ -545,7 +559,8 @@ def main() -> None:
     print(f"Warming graph…")
     get_graph()  # eager compile so first request isn't slow
 
-    if _EL is None:
+    el = _get_el()
+    if el is None:
         print("⚠  ELEVENLABS_API_KEY not set — /api/scribe-token + /api/tts/stream "
               "will return 503; UI will fall back to typed-only mode.")
     else:
