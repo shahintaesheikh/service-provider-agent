@@ -17,5 +17,8 @@ typesafe-sdk>=0.7.0
 googlemaps>=4.10.0
 httpx>=0.28.0
 
+# HTTP client (sync) for Google Places API calls
+requests>=2.31.0
+
 # Utilities
 python-dotenv>=1.0.0
